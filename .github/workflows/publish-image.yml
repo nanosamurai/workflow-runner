@@ -1,0 +1,101 @@
+name: Publish image (GHCR)
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: Test gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  secret-scan:
+    name: Gitleaks gate
+    uses: ./.github/workflows/gitleaks.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Build + push image to GHCR
+    needs:
+      - tests
+      - secret-scan
+    runs-on: ubuntu-latest
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          provenance: mode=max
+          push: true
+          sbom: true
+          tags: ghcr.io/nanosamurai/workflow-runner:sha-${{ github.sha }}
+
+      - name: Export and validate SPDX SBOM
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_NAME: ghcr.io/nanosamurai/workflow-runner
+          SBOM_PATH: ${{ runner.temp }}/workflow-runner.spdx.json
+        run: |
+          docker buildx imagetools inspect \
+            "${IMAGE_NAME}@${IMAGE_DIGEST}" \
+            --format "{{ json .SBOM.SPDX }}" \
+            > "${SBOM_PATH}"
+          jq -e \
+            '.SPDXID == "SPDXRef-DOCUMENT" and ((.packages // []) | length > 0)' \
+            "${SBOM_PATH}" > /dev/null
+
+      - name: Upload SPDX SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          name: sbom-workflow-runner-${{ github.sha }}
+          path: ${{ runner.temp }}/workflow-runner.spdx.json
+
+      - name: Attest SPDX SBOM
+        if: ${{ github.event.repository.private == false }}
+        uses: actions/attest@v4
+        with:
+          push-to-registry: true
+          sbom-path: ${{ runner.temp }}/workflow-runner.spdx.json
+          subject-digest: ${{ steps.build.outputs.digest }}
+          subject-name: ghcr.io/nanosamurai/workflow-runner
+
+      - name: Summary
+        run: |
+          {
+            echo "Pushed: ghcr.io/nanosamurai/workflow-runner:sha-${GITHUB_SHA}"
+            echo "Digest: ${{ steps.build.outputs.digest }}"
+            echo "SPDX SBOM: attached in GHCR and uploaded as a workflow artifact"
+          } >> "$GITHUB_STEP_SUMMARY"

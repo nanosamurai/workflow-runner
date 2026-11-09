@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <!--
+              Keep INFO logs useful but non-sensitive.
+              We include MDC trace + workflow identifiers so the same trace can be followed.
+            -->
+            <PatternLayout
+                    pattern="%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5p %c{1.} trace_id=%X{trace_id} workflow_run_id=%X{workflow_run_id} tenant_id=%X{tenant_id} workflow_id=%X{workflow_id} attempt_no=%X{attempt_no} kafka=%X{kafka_topic}:%X{kafka_partition}:%X{kafka_offset} - %m%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <!-- Default app logging -->
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

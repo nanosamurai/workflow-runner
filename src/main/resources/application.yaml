@@ -1,0 +1,64 @@
+server:
+  # Runner is not intended to be exposed publicly; only bind for k8s health checks.
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: workflow-runner
+
+  main:
+    banner-mode: "off"
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:${SERVER_PORT:8080}}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+workflow-runner:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer-group-id: ${KAFKA_CONSUMER_GROUP_ID:workflow-runner}
+    # For brokers with TLS listeners use SSL. Keep PLAINTEXT for local dev.
+    security-protocol: ${KAFKA_SECURITY_PROTOCOL:PLAINTEXT}
+
+    topics:
+      workflow-dispatch: ${KAFKA_TOPIC_WORKFLOW_DISPATCH:workflow.dispatch}
+      workflow-dispatch-retry-10s: ${KAFKA_TOPIC_WORKFLOW_DISPATCH_RETRY_10S:workflow.dispatch.retry.10s}
+      workflow-dispatch-retry-2m: ${KAFKA_TOPIC_WORKFLOW_DISPATCH_RETRY_2M:workflow.dispatch.retry.2m}
+      workflow-dispatch-retry-10m: ${KAFKA_TOPIC_WORKFLOW_DISPATCH_RETRY_10M:workflow.dispatch.retry.10m}
+      workflow-dispatch-retry-2h: ${KAFKA_TOPIC_WORKFLOW_DISPATCH_RETRY_2H:workflow.dispatch.retry.2h}
+      workflow-dispatch-dlq: ${KAFKA_TOPIC_WORKFLOW_DISPATCH_DLQ:workflow.dispatch.dlq}
+
+      workflow-result: ${KAFKA_TOPIC_WORKFLOW_RESULT:workflow.result}
+      workflow-outcome: ${KAFKA_TOPIC_WORKFLOW_OUTCOME:workflow.outcome}
+
+  retry:
+    max-attempts: ${WORKFLOW_MAX_ATTEMPTS:5}
+    jitter-ms: ${WORKFLOW_RETRY_JITTER_MS:250}
+
+  llm:
+    # "stub" replaces every enabled provider with an offline stub (local smoke tests only).
+    mode: ${WORKFLOW_RUNNER_LLM_MODE:}
+    # Comma list of enabled provider types: bedrock, openai_compatible.
+    providers: ${WORKFLOW_RUNNER_PROVIDERS:bedrock}
+    openai:
+      # Operator-only endpoint, e.g. http://ollama:11434/v1 (the runner POSTs to {base}/chat/completions).
+      base-url: ${WORKFLOW_RUNNER_OPENAI_BASE_URL:}
+      # Comma allow-list of model ids jobs may use.
+      models: ${WORKFLOW_RUNNER_OPENAI_MODELS:}
+      # Optional; sent as a bearer token only when set.
+      api-key: ${WORKFLOW_RUNNER_OPENAI_API_KEY:}
+      timeout-s: ${WORKFLOW_RUNNER_OPENAI_TIMEOUT_S:300}
